@@ -34,3 +34,16 @@ Cookie: ACCESS_TOKEN={{token}}
 ### Toggle like
 POST http://localhost:8080/api/posts/{{postId}}/likes/toggle
 Cookie: ACCESS_TOKEN={{token}}
+
+
+### Upload media (multipart, field name "file") -> 201 {"mediaUrl": "/media/<uuid>.<ext>"}
+POST http://localhost:8080/api/media
+Cookie: ACCESS_TOKEN={{token}}
+Content-Type: multipart/form-data; boundary=Boundary
+
+--Boundary
+Content-Disposition: form-data; name="file"; filename="clip.mp4"
+Content-Type: video/mp4
+
+< ./clip.mp4
+--Boundary--

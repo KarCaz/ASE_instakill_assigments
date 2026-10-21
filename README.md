@@ -33,6 +33,7 @@ The bootstrap downloads Gradle 8.9 and generates a local wrapper (ignored by git
 - Login page: http://localhost:8080/auth/login
 - REST OpenAPI UI: http://localhost:8080/api/swagger
 - Health: http://localhost:8080/actuator/health
+- Media upload: `POST /api/media` (multipart field `file`, authenticated) returns `{"mediaUrl": "/media/<uuid>.<ext>"}`; files are stored in `media.base-path` (default `./media`) and served from `/media/**`
 
 ## Authentication
 
