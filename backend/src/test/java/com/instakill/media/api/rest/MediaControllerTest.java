@@ -17,6 +17,9 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -81,6 +84,30 @@ class MediaControllerTest {
         mockMvc.perform(get(mediaUrl))
                 .andExpect(status().isOk())
                 .andExpect(content().bytes(bytes));
+    }
+
+    @Test
+    void uploadedImageIsScaledToMaxWidth300() throws Exception {
+        BufferedImage big = new BufferedImage(1200, 800, BufferedImage.TYPE_INT_RGB);
+        ByteArrayOutputStream png = new ByteArrayOutputStream();
+        ImageIO.write(big, "png", png);
+        MockMultipartFile file = new MockMultipartFile("file", "photo.png", "image/png", png.toByteArray());
+
+        MvcResult result = mockMvc.perform(multipart("/api/media").file(file).cookie(token))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String mediaUrl = objectMapper.readTree(result.getResponse().getContentAsString()).get("mediaUrl").asText();
+        BufferedImage stored = ImageIO.read(mediaDir.resolve(mediaUrl.substring("/media/".length())).toFile());
+        assertThat(stored.getWidth()).isEqualTo(300);
+        assertThat(stored.getHeight()).isEqualTo(200);
+    }
+
+    @Test
+    void corruptImageIsRejected() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "bad.png", "image/png", "not an image".getBytes());
+        mockMvc.perform(multipart("/api/media").file(file).cookie(token))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

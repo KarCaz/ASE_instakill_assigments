@@ -26,6 +26,15 @@ management:
         include: health,info
 media:
   base-path: media
+  processing:
+    max-width: 300
+    watermark-text: Instakill Demo
+notification:
+  ntfy:
+    enabled: true
+    base-url: https://ntfy.sh
+    # Public topic: anyone who knows the name can read it. Set NTFY_TOPIC to something unique.
+    topic: ${NTFY_TOPIC:instakill-demo-change-me}
 instakill:
   jwt:
     secret: change-me-change-me-change-me-change-me-change-me-secret-key-1234

@@ -1,6 +1,8 @@
 package com.instakill.media.api.rest;
 
 import com.instakill.common.error.BadRequestException;
+import com.instakill.media.processing.ImageProcessingException;
+import com.instakill.media.processing.ImageProcessor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -33,9 +35,11 @@ public class MediaController {
             Set.of("jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "webm");
 
     private final Path mediaRoot;
+    private final ImageProcessor imageProcessor;
 
-    public MediaController(@Value("${media.base-path:media}") String basePath) {
+    public MediaController(@Value("${media.base-path:media}") String basePath, ImageProcessor imageProcessor) {
         this.mediaRoot = Path.of(basePath).toAbsolutePath().normalize();
+        this.imageProcessor = imageProcessor;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -64,8 +68,20 @@ public class MediaController {
             if (!target.startsWith(mediaRoot)) {
                 throw new BadRequestException("Invalid file name");
             }
-            try (InputStream in = file.getInputStream()) {
-                Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+            if (imageProcessor.supports(extension)) {
+                // Images are watermarked and scaled before they are saved.
+                byte[] processed;
+                try {
+                    processed = imageProcessor.process(file.getBytes(), extension);
+                } catch (ImageProcessingException e) {
+                    throw new BadRequestException("Could not process image: " + e.getMessage());
+                }
+                Files.write(target, processed);
+            } else {
+                // Videos (and formats the JDK cannot decode, e.g. webp) are stored unchanged.
+                try (InputStream in = file.getInputStream()) {
+                    Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+                }
             }
         } catch (IOException e) {
             throw new UncheckedIOException("Could not store uploaded file", e);
