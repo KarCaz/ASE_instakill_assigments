@@ -44,3 +44,7 @@ export function addComment(postId, payload) {
 export function listComments(postId) {
   return client.get(`/api/posts/${postId}/comments`).then(res => res.data)
 }
+
+export function fetchAnalytics(params = {}) {
+  return client.get('/api/analytics', { params }).then(res => res.data)
+}

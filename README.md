@@ -10,7 +10,7 @@ Instakill is a Spring Boot 3 / Vue 3 starter for an Instagram-style social feed.
 
 ## First run
 
-Make sure you have Java 23 installed. 
+Make sure you have Java 23 installed.
 
 ```bash
 # From the project root
@@ -73,6 +73,56 @@ npm install
 npm run dev
 ```
 
-With default settings, you will be able to access the frontend on `http://localhost:5173/` 
+With default settings, you will be able to access the frontend on `http://localhost:5173/`
 It assumes the backend is running at `http://localhost:8080`.
 Check `vite.config.js` for these settings.
+
+
+## Week 5 – User analytics
+
+After logging in, select **My analytics** in the header. The analytics endpoint is
+`GET /api/analytics?topPercent=10` and requires the authenticated `ACCESS_TOKEN`
+cookie. It returns:
+
+- Weekly posts created, likes received, and comments received (grouped by event week).
+- The five posts with the highest total likes plus comments.
+- The user's overall like-to-comment ratio (`N/A` in the UI when there are no comments).
+- Average likes per photo and video post. Text-only posts are excluded from this comparison.
+- The user's average engagement rank against all registered users, including users with no posts.
+  The top-percent selector supports 5%, 10%, 25%, and 50%.
+
+The statistics are aggregated in SQLite queries rather than loading all posts and
+interactions into application memory.
+
+## Week 5 – Generate a larger SQLite dataset
+
+Install the Python dependencies:
+
+```bash
+python -m pip install Faker bcrypt
+```
+
+Start the backend once so Hibernate creates `backend/instakill.db`, then stop it.
+From the repository root, run:
+
+```bash
+python scripts/populate_database.py
+```
+
+By default this targets 10,000 total users and creates 10–20 posts per user,
+0–20 unique likes per post, and 0–10 comments per post. It clears existing
+posts, likes, and comments, keeps the `alice` and `bob` accounts, and creates
+(or resets) `charlie`. All three seed accounts use the password `password`.
+Generated content and post/interactions timestamps are placed within the past
+seven days. The operation is committed as one SQLite transaction, with inserts
+executed in batches.
+
+Options:
+
+```bash
+python scripts/populate_database.py --users 1000
+python scripts/populate_database.py --db path/to/instakill.db --users 5000 --seed 42
+```
+
+**Warning:** this script intentionally replaces the current posts, likes, and
+comments in the selected database. Back up the database first if you need its data.

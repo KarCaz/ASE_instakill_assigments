@@ -4,6 +4,9 @@
       <h1>Instakill</h1>
       <nav v-if="user">
         <span class="user">@{{ user.username }}</span>
+        <button @click="showAnalytics = !showAnalytics; showAnalytics && loadAnalytics()">
+          {{ showAnalytics ? 'Back to feed' : 'My analytics' }}
+        </button>
         <button @click="logout">Logout</button>
       </nav>
     </header>
@@ -22,6 +25,91 @@
           <p v-if="error" class="error">{{ error }}</p>
           <button type="submit">Continue</button>
         </form>
+      </section>
+
+      <section v-else-if="showAnalytics" class="analytics">
+        <div class="feed-toolbar">
+          <h2>My analytics</h2>
+          <label class="percentile-control">
+            Top
+            <select v-model.number="topPercent" @change="loadAnalytics">
+              <option :value="5">5%</option>
+              <option :value="10">10%</option>
+              <option :value="25">25%</option>
+              <option :value="50">50%</option>
+            </select>
+            ranking
+          </label>
+        </div>
+
+        <p v-if="analyticsLoading" class="hint">Calculating your statistics...</p>
+        <p v-if="analyticsError" class="error">{{ analyticsError }}</p>
+        <template v-if="analytics && !analyticsLoading">
+          <div class="analytics-summary">
+            <article class="card stat-card">
+              <span>Total likes</span><strong>{{ analytics.interactionRatio.likes }}</strong>
+            </article>
+            <article class="card stat-card">
+              <span>Total comments</span><strong>{{ analytics.interactionRatio.comments }}</strong>
+            </article>
+            <article class="card stat-card">
+              <span>Like-to-comment ratio</span>
+              <strong>{{ analytics.interactionRatio.likeToCommentRatio == null ? 'N/A' : analytics.interactionRatio.likeToCommentRatio.toFixed(2) }}</strong>
+            </article>
+            <article class="card stat-card">
+              <span>Average engagement</span><strong>{{ analytics.engagementRanking.userAverageEngagement.toFixed(2) }}</strong>
+            </article>
+          </div>
+
+          <section class="card">
+            <h3>Weekly activity</h3>
+            <p v-if="!analytics.weeklyActivity.length" class="hint">No activity yet.</p>
+            <div v-else class="table-scroll">
+              <table>
+                <thead><tr><th>Week (YYYY-WW)</th><th>Posts</th><th>Likes</th><th>Comments</th></tr></thead>
+                <tbody>
+                  <tr v-for="week in analytics.weeklyActivity" :key="week.week">
+                    <td>{{ week.week }}</td><td>{{ week.posts }}</td><td>{{ week.likes }}</td><td>{{ week.comments }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="card">
+            <h3>Top 5 posts by engagement</h3>
+            <p v-if="!analytics.topPosts.length" class="hint">You have not created any posts yet.</p>
+            <ol v-else class="top-post-list">
+              <li v-for="post in analytics.topPosts" :key="post.postId">
+                <div><strong>{{ post.content }}</strong><small>{{ formatDate(post.createdAt) }}</small></div>
+                <span>{{ post.engagement }} engagement ({{ post.likes }} likes · {{ post.comments }} comments)</span>
+              </li>
+            </ol>
+          </section>
+
+          <section class="card">
+            <h3>Average likes by media type</h3>
+            <p v-if="!analytics.averageLikesByMediaType.length" class="hint">No photo or video posts to compare yet.</p>
+            <div v-else class="media-average-list">
+              <div v-for="item in analytics.averageLikesByMediaType" :key="item.mediaType">
+                <strong>{{ item.mediaType }}</strong>
+                <span>{{ item.averageLikes.toFixed(2) }} average likes across {{ item.posts }} posts</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card ranking-card">
+            <h3>Engagement ranking</h3>
+            <p>Your average engagement is <strong>{{ analytics.engagementRanking.userAverageEngagement.toFixed(2) }}</strong> per post.</p>
+            <p>Rank: <strong>{{ analytics.engagementRanking.rank }} of {{ analytics.engagementRanking.totalUsers }}</strong> users.</p>
+            <p :class="analytics.engagementRanking.inTopPercent ? 'ranking-good' : 'hint'">
+              {{ analytics.engagementRanking.inTopPercent
+                ? `You are in the top ${analytics.engagementRanking.topPercent}% of users.`
+                : `You are not currently in the top ${analytics.engagementRanking.topPercent}% of users.` }}
+            </p>
+            <small>Users are ranked by average likes + comments per post. Users without posts are included with an average of zero.</small>
+          </section>
+        </template>
       </section>
 
       <section v-else class="feed">
@@ -59,7 +147,7 @@
           <p>{{ post.content }}</p>
           <video v-if="post.imageUrl && isVideo(post.imageUrl)" :src="post.imageUrl" controls></video>
           <img v-else-if="post.imageUrl" :src="post.imageUrl" alt="post image">
-          
+
           <!-- Comments Section -->
           <section class="comments">
             <div v-if="comments[post.id] && comments[post.id].length">
@@ -96,7 +184,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { createPost, fetchMe, listFeed, login, register as registerUser, toggleLike, listComments, addComment, uploadMedia } from './api'
+import { createPost, fetchMe, listFeed, login, register as registerUser, toggleLike, listComments, addComment, uploadMedia, fetchAnalytics } from './api'
 
 const user = ref(null)
 const posts = ref([])
@@ -113,6 +201,11 @@ const comments = reactive({})
 const newComment = reactive({})
 const commentLoading = reactive({})
 const commentError = reactive({})
+const showAnalytics = ref(false)
+const analytics = ref(null)
+const analyticsLoading = ref(false)
+const analyticsError = ref('')
+const topPercent = ref(10)
 
 onMounted(async () => {
   await bootstrap()
@@ -147,6 +240,18 @@ async function submitAuth() {
     await loadFeed()
   } catch (e) {
     error.value = e.response?.data?.detail || 'Authentication failed'
+  }
+}
+
+async function loadAnalytics() {
+  analyticsLoading.value = true
+  analyticsError.value = ''
+  try {
+    analytics.value = await fetchAnalytics({ topPercent: topPercent.value })
+  } catch (e) {
+    analyticsError.value = e.response?.data?.detail || 'Could not load analytics'
+  } finally {
+    analyticsLoading.value = false
   }
 }
 
@@ -247,6 +352,8 @@ async function logout() {
   document.cookie = 'ACCESS_TOKEN=; Max-Age=0; path=/'
   user.value = null
   posts.value = []
+  analytics.value = null
+  showAnalytics.value = false
 }
 </script>
 
@@ -415,5 +522,27 @@ async function logout() {
   border: none;
   padding: 0.4rem 1.1rem;
   border-radius: 999px;
+}
+
+.analytics { display: flex; flex-direction: column; gap: 1rem; }
+.analytics-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; }
+.stat-card { display: flex; flex-direction: column; gap: .5rem; }
+.stat-card span, .hint { color: #6b7280; }
+.stat-card strong { font-size: 1.7rem; }
+.percentile-control { display: flex; align-items: center; gap: .4rem; }
+.percentile-control select { padding: .4rem; border: 1px solid #d1d5db; border-radius: 8px; }
+.table-scroll { overflow-x: auto; }
+.analytics table { width: 100%; border-collapse: collapse; text-align: left; }
+.analytics th, .analytics td { padding: .65rem; border-bottom: 1px solid #e5e7eb; }
+.top-post-list { padding-left: 1.4rem; }
+.top-post-list li { padding: .6rem 0; }
+.top-post-list li div { display: flex; flex-direction: column; gap: .25rem; }
+.top-post-list small, .ranking-card small { color: #6b7280; }
+.media-average-list > div { display: flex; justify-content: space-between; gap: 1rem; padding: .6rem 0; border-bottom: 1px solid #e5e7eb; }
+.ranking-good { color: #15803d; font-weight: 600; }
+@media (max-width: 600px) {
+  .media-average-list > div { flex-direction: column; gap: .25rem; }
+  .app-header { align-items: flex-start; gap: 1rem; }
+  .app-header nav { flex-wrap: wrap; justify-content: flex-end; }
 }
 </style>
